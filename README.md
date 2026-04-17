@@ -1,7 +1,14 @@
 # Kako - Media Steganography CLI
 
-使用尾部追加（EOF appending）将任意文件隐藏到正常 JPG/MP4 中，不破坏宿主文件的浏览/播放能力。
+使用容器内合法元数据字段承载（JPEG APP1/XMP-like，MP4 moov/udta/uuid+free）隐藏任意文件，
+避免在文件尾部追加裸数据（trailing bytes）。
 `hide` 默认会对 secret 前 20 字节做固定 XOR 混淆，以降低常见文件头签名被直接扫描命中的概率。
+
+说明：
+
+1. 仅支持 `.jpg/.jpeg` 与 `.mp4`。
+2. `reveal` 仅支持当前容器内 `KAK3` 格式，不兼容旧 EOF 产物。
+3. MP4 若已存在 Kako 元数据，二次 `hide` 会优先在 `uuid+free` 预留空间内就地更新；超容量会报错。
 
 ## Install
 

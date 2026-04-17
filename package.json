@@ -1,7 +1,7 @@
 {
   "name": "kako",
   "version": "0.1.0",
-  "description": "Media steganography CLI for hiding files in JPG/MP4 via EOF appending",
+  "description": "Media steganography CLI for hiding files in JPG/MP4 via container metadata embedding",
   "type": "module",
   "private": true,
   "module": "src/index.ts",
