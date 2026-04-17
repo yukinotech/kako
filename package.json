@@ -1,0 +1,21 @@
+{
+  "name": "kako",
+  "version": "0.1.0",
+  "description": "Media steganography CLI for hiding files in JPG/MP4 via EOF appending",
+  "type": "module",
+  "private": true,
+  "module": "src/index.ts",
+  "bin": {
+    "kako": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "build": "bun build --compile --outfile dist/kako ./src/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
