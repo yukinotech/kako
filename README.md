@@ -1,6 +1,7 @@
 # Kako - Media Steganography CLI
 
 使用尾部追加（EOF appending）将任意文件隐藏到正常 JPG/MP4 中，不破坏宿主文件的浏览/播放能力。
+`hide` 默认会对 secret 前 20 字节做固定 XOR 混淆，以降低常见文件头签名被直接扫描命中的概率。
 
 ## Install
 

@@ -4,9 +4,19 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-const MAGIC = Buffer.from("KAKO", "ascii");
+const MAGIC_V2 = Buffer.from("KAK2", "ascii");
 const FOOTER_SIZE = 16; // filenameLen(4) + secretLen(8) + magic(4)
 const UINT32_MAX = 0xffff_ffff;
+const SIGNATURE_XOR_BYTES = 20;
+const SIGNATURE_XOR_KEY = Buffer.from("KAKO_HEADER_XOR_KEY!", "ascii");
+
+function xorSecretSignatureInPlace(data: Buffer): number {
+  const n = Math.min(SIGNATURE_XOR_BYTES, data.length, SIGNATURE_XOR_KEY.length);
+  for (let i = 0; i < n; i += 1) {
+    data.writeUInt8(data.readUInt8(i) ^ SIGNATURE_XOR_KEY.readUInt8(i), i);
+  }
+  return n;
+}
 
 function printUsage(): void {
   console.log(`Kako - Media Steganography CLI
@@ -18,6 +28,9 @@ Usage:
 Commands:
   hide    Append secret file payload to a host JPG/MP4 and produce disguised output
   reveal  Recover hidden file from a disguised media file
+
+Note:
+  hide obfuscates the first 20 bytes of secret payload with fixed XOR
 `);
 }
 
@@ -68,15 +81,20 @@ async function runHide(args: string[]): Promise<void> {
     throw new Error("Secret filename is too long to encode");
   }
 
+  const encodedSecret = Buffer.from(secretData);
+  const obfuscatedBytes = xorSecretSignatureInPlace(encodedSecret);
+
   const footer = Buffer.alloc(FOOTER_SIZE);
   footer.writeUInt32BE(fileNameBytes.length, 0);
   footer.writeBigUInt64BE(BigInt(secretData.length), 4);
-  MAGIC.copy(footer, 12);
+  MAGIC_V2.copy(footer, 12);
 
-  const outputBuffer = Buffer.concat([hostData, secretData, fileNameBytes, footer]);
+  const outputBuffer = Buffer.concat([hostData, encodedSecret, fileNameBytes, footer]);
   await writeFile(outputPath, outputBuffer);
 
-  console.log(`Hidden ${secretData.length} bytes into ${outputPath}`);
+  console.log(
+    `Hidden ${secretData.length} bytes into ${outputPath} (obfuscated first ${obfuscatedBytes} bytes)`,
+  );
 }
 
 async function runReveal(args: string[]): Promise<void> {
@@ -108,7 +126,7 @@ async function runReveal(args: string[]): Promise<void> {
   const footer = blob.subarray(footerOffset);
 
   const magic = footer.subarray(12, 16);
-  if (!magic.equals(MAGIC)) {
+  if (!magic.equals(MAGIC_V2)) {
     throw new Error("Magic signature mismatch: hidden payload not found");
   }
 
@@ -136,7 +154,8 @@ async function runReveal(args: string[]): Promise<void> {
   const fileNameStart = secretEnd;
   const fileNameEnd = fileNameStart + fileNameLen;
 
-  const secretData = blob.subarray(secretStart, secretEnd);
+  const secretData = Buffer.from(blob.subarray(secretStart, secretEnd));
+  xorSecretSignatureInPlace(secretData);
   const fileNameBytes = blob.subarray(fileNameStart, fileNameEnd);
   const fileName = fileNameBytes.toString("utf8");
 
