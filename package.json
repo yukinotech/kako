@@ -10,7 +10,13 @@
   },
   "scripts": {
     "start": "bun run src/index.ts",
-    "build": "bun build --compile --outfile dist/kako ./src/index.ts"
+    "clean": "bun run scripts/clean.ts",
+    "build:bin": "bun run scripts/build-local.ts",
+    "build:release:bin": "bun run scripts/build-release.ts",
+    "build:verify": "bun run scripts/verify-local.ts",
+    "build": "bun run clean && bun run build:bin",
+    "build:release": "bun run clean && bun run build:release:bin",
+    "build:full": "bun run build && bun run build:verify"
   },
   "devDependencies": {
     "@types/bun": "latest"

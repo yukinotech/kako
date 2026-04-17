@@ -22,10 +22,35 @@ bun run start hide -s test.txt -h cover.jpg -o safe.jpg
 bun run start reveal -i safe.jpg -d ./restored
 ```
 
-## Build Binary
+## Build Binary (Cross-platform)
+
+默认构建（当前机器平台）：
 
 ```bash
 bun run build
 ```
 
 输出：`dist/kako`
+
+目标发布平台：
+
+1. `windows-x64`
+2. `macos-x64` (Intel)
+3. `macos-arm64` (Apple Silicon)
+4. `linux-x64`
+
+推荐一键构建发布产物：
+
+```bash
+bun run build:release
+```
+
+可直接用 Bun 手工交叉编译产物：
+
+```bash
+mkdir -p dist
+bun build --compile --target=bun-windows-x64-baseline ./src/index.ts --outfile dist/kako-windows-x64.exe
+bun build --compile --target=bun-darwin-x64-baseline ./src/index.ts --outfile dist/kako-macos-x64
+bun build --compile --target=bun-darwin-arm64 ./src/index.ts --outfile dist/kako-macos-arm64
+bun build --compile --target=bun-linux-x64-baseline ./src/index.ts --outfile dist/kako-linux-x64
+```
