@@ -52,28 +52,53 @@ class ProcessRunResult {
 }
 
 class KakoProcessRunner {
-  KakoProcessRunner({String? workspaceRoot}) : workspaceRoot = workspaceRoot ?? _detectWorkspaceRoot();
+  KakoProcessRunner({String? workspaceRoot})
+    : workspaceRoot = workspaceRoot ?? _detectWorkspaceRoot();
 
   final String workspaceRoot;
 
   static String _detectWorkspaceRoot() {
-    Directory current = Directory.current.absolute;
-
-    while (true) {
-      final arm = File('${current.path}/dist/kako-macos-arm64');
-      final generic = File('${current.path}/dist/kako');
-      if (arm.existsSync() || generic.existsSync()) {
-        return current.path;
-      }
-
-      final parent = current.parent;
-      if (parent.path == current.path) {
-        throw Exception(
-          '未找到 Kako 工作目录。请在仓库内启动应用，或显式传入 workspaceRoot（应包含 dist/kako 可执行文件）。',
-        );
-      }
-      current = parent;
+    bool hasKakoDist(Directory dir) {
+      final arm = File('${dir.path}/dist/kako-macos-arm64');
+      final generic = File('${dir.path}/dist/kako');
+      return arm.existsSync() || generic.existsSync();
     }
+
+    String? walkUpToFindRoot(Directory start) {
+      Directory current = start.absolute;
+      while (true) {
+        if (hasKakoDist(current)) {
+          return current.path;
+        }
+        final parent = current.parent;
+        if (parent.path == current.path) {
+          return null;
+        }
+        current = parent;
+      }
+    }
+
+    final envRoot = Platform.environment['KAKO_WORKSPACE_ROOT'];
+    if (envRoot != null && envRoot.isNotEmpty) {
+      final byEnv = walkUpToFindRoot(Directory(envRoot));
+      if (byEnv != null) {
+        return byEnv;
+      }
+    }
+
+    final byCwd = walkUpToFindRoot(Directory.current);
+    if (byCwd != null) {
+      return byCwd;
+    }
+
+    final exeDir = File(Platform.resolvedExecutable).parent;
+    final byExecutable = walkUpToFindRoot(exeDir);
+    if (byExecutable != null) {
+      return byExecutable;
+    }
+
+    // Do not crash app startup. Let run() surface actionable error on demand.
+    return Directory.current.absolute.path;
   }
 
   String get binaryPath {
@@ -87,7 +112,13 @@ class KakoProcessRunner {
   Future<ProcessRunResult> run(List<String> args) async {
     final binary = File(binaryPath);
     if (!binary.existsSync()) {
-      throw Exception('未找到 Kako 二进制: ${binary.path}。请先在仓库根目录执行 `bun run build`。');
+      final arm = File('$workspaceRoot/dist/kako-macos-arm64').path;
+      final generic = File('$workspaceRoot/dist/kako').path;
+      throw Exception(
+        '未找到 Kako 二进制。当前 workspaceRoot=$workspaceRoot。\n'
+        '已尝试: $arm 或 $generic\n'
+        '请在仓库根目录执行 `bun run build`，或设置环境变量 KAKO_WORKSPACE_ROOT 指向仓库根目录。',
+      );
     }
 
     final start = DateTime.now();
@@ -150,7 +181,10 @@ class _KakoHomePageState extends State<KakoHomePage> {
   bool _revealRunning = false;
   TaskResult? _revealLast;
 
-  Future<void> _pickFile(ValueSetter<String?> onPicked, {List<String>? allowedExtensions}) async {
+  Future<void> _pickFile(
+    ValueSetter<String?> onPicked, {
+    List<String>? allowedExtensions,
+  }) async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: false,
       type: allowedExtensions == null ? FileType.any : FileType.custom,
@@ -191,7 +225,9 @@ class _KakoHomePageState extends State<KakoHomePage> {
     if (_hideRunning) {
       return;
     }
-    if (_hideSecretPath == null || _hideHostPath == null || _hideOutputPath == null) {
+    if (_hideSecretPath == null ||
+        _hideHostPath == null ||
+        _hideOutputPath == null) {
       setState(() {
         _hideLast = TaskResult(
           type: TaskType.hide,
@@ -232,7 +268,9 @@ class _KakoHomePageState extends State<KakoHomePage> {
         exitCode: result.exitCode,
         duration: result.duration,
         timestamp: DateTime.now(),
-        errorMessage: result.success ? null : _mapError(result.stderr, '隐藏任务执行失败'),
+        errorMessage: result.success
+            ? null
+            : _mapError(result.stderr, '隐藏任务执行失败'),
       );
 
       setState(() {
@@ -307,7 +345,9 @@ class _KakoHomePageState extends State<KakoHomePage> {
         exitCode: result.exitCode,
         duration: result.duration,
         timestamp: DateTime.now(),
-        errorMessage: result.success ? null : _mapError(result.stderr, '提取任务执行失败'),
+        errorMessage: result.success
+            ? null
+            : _mapError(result.stderr, '提取任务执行失败'),
       );
 
       setState(() {
@@ -341,11 +381,7 @@ class _KakoHomePageState extends State<KakoHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      _buildHidePage(),
-      _buildRevealPage(),
-      _buildLogsPage(),
-    ];
+    final pages = [_buildHidePage(), _buildRevealPage(), _buildLogsPage()];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kako 桌面版')),
@@ -356,9 +392,18 @@ class _KakoHomePageState extends State<KakoHomePage> {
             onDestinationSelected: (value) => setState(() => _tabIndex = value),
             labelType: NavigationRailLabelType.all,
             destinations: const [
-              NavigationRailDestination(icon: Icon(Icons.visibility_off), label: Text('隐藏')),
-              NavigationRailDestination(icon: Icon(Icons.visibility), label: Text('提取')),
-              NavigationRailDestination(icon: Icon(Icons.article), label: Text('日志')),
+              NavigationRailDestination(
+                icon: Icon(Icons.visibility_off),
+                label: Text('隐藏'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.visibility),
+                label: Text('提取'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.article),
+                label: Text('日志'),
+              ),
             ],
           ),
           const VerticalDivider(width: 1),
@@ -412,11 +457,15 @@ class _KakoHomePageState extends State<KakoHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(ok ? '执行成功' : '执行失败', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+            Text(
+              ok ? '执行成功' : '执行失败',
+              style: TextStyle(color: color, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Text('耗时: ${result.duration.inMilliseconds}ms'),
             Text('Exit code: ${result.exitCode}'),
-            if (result.errorMessage != null) Text('错误: ${result.errorMessage!}'),
+            if (result.errorMessage != null)
+              Text('错误: ${result.errorMessage!}'),
             if (result.stdout.isNotEmpty) Text('输出: ${result.stdout}'),
             if (result.stderr.isNotEmpty) Text('错误输出: ${result.stderr}'),
           ],
@@ -429,12 +478,16 @@ class _KakoHomePageState extends State<KakoHomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('将秘密文件写入 JPG/JPEG/MP4', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const Text(
+          '将秘密文件写入 JPG/JPEG/MP4',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
         _buildPathRow(
           label: '秘密文件',
           value: _hideSecretPath,
-          onPick: () => _pickFile((path) => setState(() => _hideSecretPath = path)),
+          onPick: () =>
+              _pickFile((path) => setState(() => _hideSecretPath = path)),
           button: '选择',
         ),
         const SizedBox(height: 12),
@@ -455,7 +508,9 @@ class _KakoHomePageState extends State<KakoHomePage> {
             if (dir == null || _hideHostPath == null) {
               return;
             }
-            final ext = _hideHostPath!.toLowerCase().endsWith('.mp4') ? 'mp4' : 'jpg';
+            final ext = _hideHostPath!.toLowerCase().endsWith('.mp4')
+                ? 'mp4'
+                : 'jpg';
             setState(() {
               _hideOutputPath = '$dir/kako_output.$ext';
             });
@@ -484,7 +539,10 @@ class _KakoHomePageState extends State<KakoHomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('提取隐藏文件', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const Text(
+          '提取隐藏文件',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
         _buildPathRow(
           label: '输入媒体',
@@ -499,7 +557,8 @@ class _KakoHomePageState extends State<KakoHomePage> {
         _buildPathRow(
           label: '输出目录',
           value: _revealOutputDir,
-          onPick: () => _pickDirectory((path) => setState(() => _revealOutputDir = path)),
+          onPick: () =>
+              _pickDirectory((path) => setState(() => _revealOutputDir = path)),
           button: '选择',
         ),
         const SizedBox(height: 18),
@@ -533,15 +592,22 @@ class _KakoHomePageState extends State<KakoHomePage> {
         final ok = item.status == TaskStatus.success;
         return Card(
           child: ExpansionTile(
-            title: Text('${item.type == TaskType.hide ? '隐藏' : '提取'} • ${ok ? '成功' : '失败'}'),
-            subtitle: Text('${item.timestamp.toLocal()} • ${item.duration.inMilliseconds}ms • exit=${item.exitCode}'),
+            title: Text(
+              '${item.type == TaskType.hide ? '隐藏' : '提取'} • ${ok ? '成功' : '失败'}',
+            ),
+            subtitle: Text(
+              '${item.timestamp.toLocal()} • ${item.duration.inMilliseconds}ms • exit=${item.exitCode}',
+            ),
             childrenPadding: const EdgeInsets.all(12),
             children: [
               SelectableText('命令: ${item.command.join(' ')}'),
               const SizedBox(height: 8),
-              if (item.stdout.isNotEmpty) SelectableText('标准输出\n${item.stdout}'),
-              if (item.stderr.isNotEmpty) SelectableText('标准错误\n${item.stderr}'),
-              if (item.errorMessage != null) SelectableText('错误说明: ${item.errorMessage}'),
+              if (item.stdout.isNotEmpty)
+                SelectableText('标准输出\n${item.stdout}'),
+              if (item.stderr.isNotEmpty)
+                SelectableText('标准错误\n${item.stderr}'),
+              if (item.errorMessage != null)
+                SelectableText('错误说明: ${item.errorMessage}'),
             ],
           ),
         );
